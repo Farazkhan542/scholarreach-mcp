@@ -1,0 +1,1 @@
+"""ScholarReach MCP server."""

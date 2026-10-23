@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScholarReach drafts</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f24; --muted:#5b6470; --line:#e3e6ea; --accent:#2457d6; --ok:#1d7a46; --warn:#a15c00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16191d; --fg:#e8eaed; --muted:#9aa3ad; --line:#2c3138; --accent:#7aa2ff; --ok:#5fd08e; --warn:#f0b35a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:12px; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  h1 { font-size:15px; margin:0 0 10px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .who { font-weight:600; }
+  .meta { color:var(--muted); font-size:12px; margin:2px 0 8px; }
+  .subject { font-weight:600; margin-bottom:6px; }
+  .body { white-space:pre-wrap; max-height:9.5em; overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  button { font:inherit; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:8px; padding:6px 12px; cursor:pointer; }
+  button[disabled] { opacity:.5; cursor:default; }
+  .status { font-size:12px; }
+  .status.ok { color:var(--ok); } .status.warn { color:var(--warn); }
+  .empty { color:var(--muted); }
+</style>
+</head>
+<body>
+<h1>Drafts waiting for you</h1>
+<div id="list"><p class="empty">Loading…</p></div>
+<script>
+// Minimal MCP Apps bridge (io.modelcontextprotocol/ui): JSON-RPC over postMessage with the host.
+let nextId = 1;
+const pending = new Map();
+function send(msg) { window.parent.postMessage({ jsonrpc: "2.0", ...msg }, "*"); }
+function request(method, params) {
+  const id = nextId++;
+  send({ id, method, params });
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+window.addEventListener("message", (ev) => {
+  const m = ev.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  if (m.id !== undefined && pending.has(m.id)) {
+    const p = pending.get(m.id); pending.delete(m.id);
+    m.error ? p.reject(m.error) : p.resolve(m.result);
+  } else if (m.method === "ui/notifications/tool-result") {
+    render(m.params && m.params.structuredContent);
+  }
+});
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+function render(data) {
+  const list = document.getElementById("list");
+  const emails = (data && (data.result || data).emails) || [];
+  if (!emails.length) { list.innerHTML = '<p class="empty">No drafts waiting.</p>'; return resize(); }
+  list.innerHTML = emails.map((e) => `
+    <div class="card" data-id="${e.outreach_id}">
+      <div class="who">${esc(e.professor)}</div>
+      <div class="meta">${esc(e.institution || "")}${e.to ? " · " + esc(e.to) : " · no email address yet"}</div>
+      <div class="subject">${esc(e.subject)}</div>
+      <div class="body">${esc(e.body)}</div>
+      <div class="row">
+        <button ${e.to ? "" : "disabled"} onclick="approve(${e.outreach_id}, this)">Approve &amp; send</button>
+        <span class="status"></span>
+      </div>
+    </div>`).join("");
+  resize();
+}
+
+async function approve(id, btn) {
+  const status = btn.parentElement.querySelector(".status");
+  btn.disabled = true; status.className = "status"; status.textContent = "Approving…";
+  try {
+    const r = await request("tools/call", { name: "approve_from_card", arguments: { outreach_id: id } });
+    if (r && r.isError) throw new Error((r.content && r.content[0] && r.content[0].text) || "Failed");
+    status.className = "status ok"; status.textContent = "Approved: it goes out from your Gmail shortly.";
+  } catch (err) {
+    btn.disabled = false; status.className = "status warn"; status.textContent = err.message || "Failed";
+  }
+}
+
+function resize() {
+  send({ method: "ui/notifications/size-changed", params: { height: document.documentElement.scrollHeight } });
+}
+
+request("ui/initialize", {
+  protocolVersion: "2026-01-26",
+  appInfo: { name: "scholarreach-review", version: "1.0.0" },
+  appCapabilities: {},
+}).then(() => send({ method: "ui/notifications/initialized", params: {} })).catch(() => {});
+</script>
+</body>
+</html>

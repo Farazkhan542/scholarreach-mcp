@@ -1,0 +1,24 @@
+[project]
+name = "scholarreach-mcp"
+version = "1.0.0"
+description = "MCP server that lets Alexa+ run a student's professor outreach through ScholarReach"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = ["mcp==2.3.0", "httpx>=0.27", "uvicorn>=0.30"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+scholarreach-mcp = "scholarreach_mcp.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scholarreach_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
