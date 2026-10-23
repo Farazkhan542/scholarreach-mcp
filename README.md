@@ -2,6 +2,8 @@
 
 > *"Alexa, find me three professors in Germany working on federated learning and write to them."*
 
+**Demo video:** https://youtu.be/S8FSP5ovAfE
+
 An **Alexa+ MCP server** (MCP spec **2025-11-25**, **Streamable HTTP**) for
 [ScholarReach](https://scholarreach.faraz-khan.xyz), a web app that helps students apply abroad by
 finding professors whose recent papers match their research, finding the professors' email addresses,

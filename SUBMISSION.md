@@ -3,7 +3,7 @@
 **Primary track:** Alexa+ (self-hosted MCP server, spec 2025-11-25, Streamable HTTP)
 **Mini challenges:** none
 **Repo:** https://github.com/Farazkhan542/scholarreach-mcp (MIT)
-**Video:** <YouTube link>
+**Video:** https://youtu.be/S8FSP5ovAfE
 
 ---
 
