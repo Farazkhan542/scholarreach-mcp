@@ -117,6 +117,7 @@ Alexa+ / MCP host ──Streamable HTTP (MCP 2025-11-25)──▶ scholarreach-m
 | [scholarreach_mcp/review.html](scholarreach_mcp/review.html) | MCP App review card (postMessage JSON-RPC bridge) |
 | [scholarreach_mcp/\_\_main\_\_.py](scholarreach_mcp/__main__.py) | Streamable HTTP server (uvicorn) + optional bearer auth |
 | [tests/test_server.py](tests/test_server.py) | End-to-end MCP tests |
+| [DEMO.md](DEMO.md) | Demo recording guide |
 
 ## License
 
