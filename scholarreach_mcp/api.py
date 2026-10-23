@@ -82,9 +82,14 @@ class ScholarReachAPI:
         if not self.token:
             await self._login()
         for attempt in range(2):
-            r = await self.http.request(
-                method, path, json=json, params=params, headers={"Authorization": f"Bearer {self.token}"}
-            )
+            try:
+                r = await self.http.request(
+                    method, path, json=json, params=params, headers={"Authorization": f"Bearer {self.token}"}
+                )
+            except httpx.TimeoutException as e:
+                raise ScholarReachError(504, "ScholarReach is taking too long right now. Try again in a minute.") from e
+            except httpx.HTTPError as e:
+                raise ScholarReachError(502, "I couldn't reach ScholarReach. Check the connection.") from e
             if r.status_code == 401 and attempt == 0 and self.email and self.password:
                 await self._login()  # token expired or password changed: sign in again once
                 continue

@@ -5,7 +5,9 @@ screens. Sending email always needs the student's explicit yes: `approve_email` 
 elicitation, and the review card's Approve button calls an app-only tool the model cannot see.
 """
 
+import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from importlib.resources import files
 from typing import Annotated, Any
@@ -22,6 +24,8 @@ from .api import ScholarReachAPI, ScholarReachError
 
 REVIEW_UI = "ui://scholarreach/review.html"
 FOLLOW_UP_AFTER_DAYS = 10
+DISCOVERY_BUDGET_S = 150  # stop starting new email lookups after this long
+DISCOVERY_PARALLEL = 3  # email lookups run in small parallel batches
 OPEN_STATUSES = ("draft", "failed")
 
 INSTRUCTIONS = """\
@@ -49,8 +53,8 @@ class SendConfirmation(BaseModel):
     send: bool = Field(description="Yes, send this email from my Gmail.")
 
 
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+def _plural(n: int, word: str, plural: str | None = None) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {plural or word + 's'}"
 
 
 def _prof(o: dict) -> str:
@@ -124,9 +128,10 @@ async def pipeline_summary(api: ScholarReachAPI) -> dict[str, Any]:
     if by.get("failed"):
         next_steps.append(f"{_plural(by['failed'], 'email')} failed to send: fix the address and approve again.")
     if needs_follow_up:
+        n = len(needs_follow_up)
         next_steps.append(
-            f"{_plural(len(needs_follow_up), 'professor')} haven't replied in {FOLLOW_UP_AFTER_DAYS}+ days; "
-            "mark replies, or consider other professors."
+            f"{_plural(n, 'professor')} {'hasn' if n == 1 else 'haven'}'t replied in {FOLLOW_UP_AFTER_DAYS}+ days. "
+            "Mark any replies, or reach out to new professors."
         )
     if uncontacted:
         next_steps.append(f"{_plural(len(uncontacted), 'matched professor')} not contacted yet.")
@@ -134,8 +139,8 @@ async def pipeline_summary(api: ScholarReachAPI) -> dict[str, Any]:
         next_steps.append("Find new professors with plan_outreach.")
 
     speech = (
-        f"You've sent {by.get('sent', 0) + by.get('replied', 0)} emails and got "
-        f"{_plural(by.get('replied', 0), 'reply')}. "
+        f"You've sent {_plural(by.get('sent', 0) + by.get('replied', 0), 'email')} and got "
+        f"{_plural(by.get('replied', 0), 'reply', 'replies')}. "
         f"{_plural(len(drafts), 'draft')} waiting, {by.get('approved', 0)} queued to send today "
         f"({stats['sent_today']} of {stats['daily_limit']} sent). Next: {next_steps[0]}"
     )
@@ -228,34 +233,66 @@ def build_server(api: ScholarReachAPI | None = None) -> MCPServer:
         found = await _call(api.search_leads(
             limit=min(50, max(10, how_many * 3)), research_interests=research_interests, countries=countries
         ))
-        leads = sorted(found["leads"], key=lambda lead: lead["score"], reverse=True)
-        already = [lead for lead in leads if lead.get("outreach_id")]
-        fresh = [lead for lead in leads if not lead.get("outreach_id")]
+        already = [lead for lead in found["leads"] if lead.get("outreach_id")]
+        # Also consider matches saved in earlier sessions (on the same topics), so known addresses get used.
+        wanted = {t.lower() for t in research_interests or []}
+        pool = {lead["id"]: lead for lead in await _call(api.leads())
+                if not wanted or wanted & {m.lower() for m in lead.get("matched_interests", [])}}
+        pool.update({lead["id"]: lead for lead in found["leads"]})
+        fresh = sorted((lead for lead in pool.values() if not lead.get("outreach_id")),
+                       key=lambda lead: lead["score"], reverse=True)
+        known = [lead for lead in fresh if lead.get("contact_email")]
+        unknown = [lead for lead in fresh if not lead.get("contact_email")]
 
         drafts: list[dict] = []
         no_email: list[str] = []
         problems: list[str] = []
-        for lead in fresh[: how_many * 2]:  # bounded: email discovery is the slow part
-            if len(drafts) >= how_many:
-                break
+        tried: set[int] = set()
+
+        async def write(lead: dict) -> None:
             name = lead["professor"]["name"]
-            await ctx.report_progress(len(drafts), how_many, f"Finding {name}'s email")
+            await ctx.report_progress(len(drafts), how_many, f"Writing to {name}")
             try:
-                if not lead.get("contact_email"):
-                    lead = await api.find_email(lead["id"])
-                if not lead.get("contact_email"):
-                    no_email.append(name)
-                    continue
-                await ctx.report_progress(len(drafts), how_many, f"Writing to {name}")
                 drafts.append(email_card(await api.draft(lead["id"])))
             except ScholarReachError as e:
                 problems.append(f"{name}: {e.message}")
+
+        async def discover(lead: dict) -> dict | None:
+            try:
+                found_lead = await api.find_email(lead["id"])
+            except ScholarReachError as e:
+                problems.append(f"{lead['professor']['name']}: {e.message}")
+                return None
+            if not found_lead.get("contact_email"):
+                no_email.append(lead["professor"]["name"])
+                return None
+            return found_lead
+
+        # 1. Professors whose address is already known: no slow lookup needed.
+        for lead in known:
+            if len(drafts) >= how_many:
+                break
+            tried.add(lead["id"])
+            await write(lead)
+
+        # 2. Look up the rest a few at a time, within a time budget so a voice request stays responsive.
+        started = time.monotonic()
+        while len(drafts) < how_many and unknown and len(tried) < how_many * 8 + len(known):
+            if time.monotonic() - started > DISCOVERY_BUDGET_S:
+                break
+            batch, unknown = unknown[:DISCOVERY_PARALLEL], unknown[DISCOVERY_PARALLEL:]
+            tried.update(lead["id"] for lead in batch)
+            names = ", ".join(lead["professor"]["name"] for lead in batch)
+            await ctx.report_progress(len(drafts), how_many, f"Finding emails for {names}")
+            for lead in await asyncio.gather(*(discover(lead) for lead in batch)):
+                if lead and len(drafts) < how_many:
+                    await write(lead)
         await ctx.report_progress(how_many, how_many, "Done")
 
         if drafts:
             names = ", ".join(f"{d['professor']}" + (f" at {d['institution']}" if d["institution"] else "")
                               for d in drafts)
-            speech = f"I wrote {_plural(len(drafts), 'draft')}: {names}. Nothing is sent yet. Want to review them?"
+            speech = f"I wrote {_plural(len(drafts), 'draft')}: {names}. Nothing is sent yet. Want to review {'it' if len(drafts) == 1 else 'them'}?"
         else:
             speech = "I couldn't write any new drafts this time."
         if already:
@@ -268,7 +305,7 @@ def build_server(api: ScholarReachAPI | None = None) -> MCPServer:
             "skipped_already_contacted": [lead["professor"]["name"] for lead in already],
             "no_email_found": no_email,
             "problems": problems,
-            "other_matches": [lead_card(lead) for lead in fresh[how_many * 2:][:5]],
+            "other_matches": [lead_card(lead) for lead in fresh if lead["id"] not in tried][:5],
             "warnings": found.get("warnings", []),
             "notes": found.get("notes", []),
         }

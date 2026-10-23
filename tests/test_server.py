@@ -132,7 +132,8 @@ async def test_whats_next_remembers_earlier_sessions(fake):
     assert d["by_status"] == {"sent": 1}
     assert d["follow_up"][0]["professor"] == "Prof 1 at Uni 1"  # sent 12 days ago, no reply
     assert d["uncontacted_leads"] == 3
-    assert "sent 1 emails" in d["speech"]
+    assert d["speech"].startswith("You've sent 1 email and got 0 replies.")
+    assert "1 professor hasn't replied" in d["speech"]
 
 
 async def test_plan_outreach_skips_contacted_finds_emails_and_drafts(fake):
@@ -142,16 +143,16 @@ async def test_plan_outreach_skips_contacted_finds_emails_and_drafts(fake):
         progress.append(msg)
 
     async with make_client(fake) as c:
-        r = await c.call_tool("plan_outreach", {"research_interests": ["federated learning"], "how_many": 2},
+        r = await c.call_tool("plan_outreach", {"research_interests": ["federated learning"], "how_many": 3},
                               progress_callback=on_progress)
     d = data(r)
-    assert [x["professor"] for x in d["drafts"]] == ["Prof 2", "Prof 4"]
-    assert d["drafts"][0]["to"] == "p2@uni2.de"  # discovered during the run
+    assert [x["professor"] for x in d["drafts"]] == ["Prof 4", "Prof 2"]  # known address first
+    assert d["drafts"][1]["to"] == "p2@uni2.de"  # discovered during the run
     assert d["skipped_already_contacted"] == ["Prof 1"]
     assert d["no_email_found"] == ["Prof 3"]
     assert "Nothing is sent yet" in d["speech"]
     assert all(o["status"] != "approved" for o in fake.outreach.values())
-    assert "Finding Prof 2's email" in progress
+    assert "Finding emails for Prof 2, Prof 3" in progress
 
 
 async def test_approve_asks_for_confirmation_and_respects_no(fake):
