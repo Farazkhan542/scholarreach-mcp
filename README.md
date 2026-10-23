@@ -41,7 +41,7 @@ python -m scholarreach_mcp        # → ScholarReach MCP server on http://127.0.
 
 | Client | How |
 |---|---|
-| **MCP Inspector** | `npx @modelcontextprotocol/inspector` → Transport *Streamable HTTP* → URL `http://127.0.0.1:8765/mcp` → Connect |
+| **MCP Inspector** | `npx.cmd @modelcontextprotocol/inspector` (PowerShell; `npx` elsewhere) → Transport *Streamable HTTP* → URL `http://127.0.0.1:8765/mcp` → Connect |
 | **Claude Code** | `claude mcp add --transport http scholarreach http://127.0.0.1:8765/mcp` |
 | **Any MCP host / Alexa+** | Streamable HTTP endpoint `https://<your-host>/mcp`. Set `MCP_AUTH_TOKEN` and send `Authorization: Bearer <token>` |
 

@@ -3,7 +3,7 @@
 ## Before you hit record
 
 1. Terminal 1: `.\.venv\Scripts\python.exe -m scholarreach_mcp` (leave it running).
-2. Terminal 2: `npx @modelcontextprotocol/inspector`. In the browser tab: **Transport** `Streamable HTTP`,
+2. Terminal 2: `npx.cmd @modelcontextprotocol/inspector` (PowerShell; `npx` elsewhere). In the browser tab: **Transport** `Streamable HTTP`,
    **URL** `http://127.0.0.1:8765/mcp` → **Connect** → **Tools** → **List Tools**.
 3. Open a second browser tab on https://scholarreach.faraz-khan.xyz (logged in).
 4. Start recording: **Win + Alt + R** (stop with the same keys). Video lands in `Videos\Captures`.
