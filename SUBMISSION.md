@@ -34,6 +34,24 @@ project makes it an **Alexa+ agent** through a self-hosted MCP server:
   calls an **app-only tool the model can't see**. The backend blocks duplicates and honors
   do-not-contact.
 
+## What's new during the hackathon
+
+ScholarReach is a live web app (https://scholarreach.faraz-khan.xyz). Before this project it was
+usable only through its website. Everything in this repository was built during the submission
+period, and it is the significant update:
+
+- **A new Alexa+ interface:** a self-hosted MCP server (spec 2025-11-25, Streamable HTTP) that
+  exposes ScholarReach as voice-first tools.
+- **A new agentic workflow:** `plan_outreach` chains search → skip already-contacted → email
+  discovery → drafting in one request. In the web app those are separate manual steps per professor.
+- **New cross-session awareness:** `whats_next` turns saved state into spoken next steps (drafts
+  waiting, failed sends, no reply after 10 days).
+- **New confirm-before-send safety layer:** MCP elicitation plus an app-only Approve button.
+- **A new MCP App review card** for screens.
+
+The demo video shows these new features. The website is shown only as the place where emails and
+status end up.
+
 ## How I built it
 
 - Python, **MCP Python SDK 2.3** (`MCPServer`), Streamable HTTP on uvicorn, negotiates **2025-11-25**
